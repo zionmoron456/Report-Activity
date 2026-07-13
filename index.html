@@ -916,15 +916,15 @@ async function loadMonth(monthName){
   // keep the real sheet row number (header is row 1, data starts row 2)
   const withRowNum = rows.map((r, i)=>({ r, rowNumber: i+2 }));
 
-  // sort by actual date value (newest first), not by insertion order
+  // sort by actual date value (oldest first, newest last)
   const sorted = withRowNum.slice().sort((a,b)=>{
     const da = parseTanggalShort(a.r[1], monthName);
     const db = parseTanggalShort(b.r[1], monthName);
-    if(da !== db) return db.localeCompare(da);
-    return b.rowNumber - a.rowNumber; // tie-break: most recently entered first
+    if(da !== db) return da.localeCompare(db);
+    return a.rowNumber - b.rowNumber; // tie-break: entered earlier first
   });
 
-  sorted.slice(0,60).forEach(({r, rowNumber})=>{
+  sorted.slice(-60).forEach(({r, rowNumber})=>{
     const [no, tanggal, kategori, keterangan, lampiran] = r;
     const kIdx = parseInt(kategori,10) - 1;
     const kLabel = (kIdx >= 0 && kIdx < kpi.length) ? kpi[kIdx] : ('Kategori ' + kategori);
