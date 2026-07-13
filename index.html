@@ -25,7 +25,7 @@
     --mono: 'SFMono-Regular', Consolas, 'Roboto Mono', monospace;
     --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; touch-action:manipulation;}
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;height:100%;background:var(--navy);font-family:var(--sans);color:var(--paper);overscroll-behavior:none;}
   #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--navy);position:relative;}
 
@@ -62,7 +62,7 @@
   .setup-note{font-family:var(--mono);font-size:11px;color:var(--paper-dim);opacity:.7;margin-top:6px;}
 
   /* ---------- main content ---------- */
-  .content{flex:1;padding:0 18px 120px;}
+  .content{flex:1;padding:0 18px 100px;}
   .section-label{
     font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
     color:var(--paper-dim);margin:22px 2px 10px;display:flex;justify-content:space-between;align-items:baseline;
@@ -75,7 +75,12 @@
   .stat .num{font-family:var(--mono);font-size:24px;font-weight:700;color:var(--amber);}
   .stat .lbl{font-size:11.5px;color:var(--paper-dim);margin-top:2px;}
 
-  .activity{display:flex;gap:12px;align-items:flex-start;}
+  .month-select{
+    font-family:var(--mono);font-size:11.5px;color:var(--paper);background:var(--navy-2);
+    border:1px solid var(--navy-3);border-radius:8px;padding:5px 8px;appearance:none;
+  }
+  .activity{display:flex;gap:12px;align-items:flex-start;cursor:pointer;}
+  .activity:active{opacity:.75;}
   .activity .no{
     font-family:var(--mono);font-size:12px;color:var(--paper-dim);
     background:var(--navy);border:1px solid var(--navy-3);border-radius:8px;
@@ -95,12 +100,14 @@
 
   /* ---------- fab ---------- */
   .fab{
-    position:fixed;right:22px;bottom:calc(env(safe-area-inset-bottom, 0px) + 40px);
-    width:64px;height:64px;border-radius:50%;background:var(--amber);color:#1B140A;
+    position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 22px);
+    transform:translateX(calc(-260px + 440px/2 - 30px));
+    width:60px;height:60px;border-radius:50%;background:var(--amber);color:#1B140A;
     display:flex;align-items:center;justify-content:center;border:none;box-shadow:0 8px 24px rgba(245,166,35,.35);
-    z-index:100;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+    z-index:30;cursor:pointer;
   }
-  .fab:active{background:var(--amber-dim);}
+  @media (max-width:520px){ .fab{ transform:none; right:22px; left:auto; } }
+  .fab:active{transform:scale(.94);}
   .fab svg{width:26px;height:26px;}
 
   /* ---------- sheet / modal ---------- */
@@ -213,7 +220,10 @@
       <div class="stat"><div class="num" id="statPhoto">0</div><div class="lbl">Ada lampiran</div></div>
     </div>
 
-    <div class="section-label"><span id="listMonthLabel">Aktivitas Terbaru</span><span id="refreshBtn" style="cursor:pointer;color:var(--amber);">refresh</span></div>
+    <div class="section-label">
+      <select class="month-select" id="monthSelect"></select>
+      <span id="refreshBtn" style="cursor:pointer;color:var(--amber);">refresh</span>
+    </div>
     <div id="activityList"></div>
   </div>
 
@@ -225,7 +235,7 @@
   <div class="overlay" id="overlayAdd"></div>
   <div class="sheet" id="sheetAdd">
     <div class="sheet-handle"></div>
-    <div class="sheet-head"><h3>Aktivitas Baru</h3><button class="iconbtn" id="btnCloseAdd">✕</button></div>
+    <div class="sheet-head"><h3 id="sheetAddTitle">Aktivitas Baru</h3><button class="iconbtn" id="btnCloseAdd">✕</button></div>
     <div class="sheet-body">
       <div class="field">
         <label>TANGGAL</label>
@@ -243,7 +253,7 @@
         <label>FOTO LAMPIRAN (opsional)</label>
         <div class="photo-row">
           <label class="photo-slot" id="photoSlot">
-            <input type="file" accept="image/*" id="fFotoCamera" style="display:none;">
+            <input type="file" accept="image/*" capture="environment" id="fFotoCamera" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
             <span>Ambil / Pilih Foto</span>
           </label>
@@ -252,6 +262,7 @@
       <div class="field submit-row">
         <button class="btn btn-primary btn-block" id="btnSubmitActivity">Simpan Aktivitas</button>
         <div class="helper" id="submitHelper"></div>
+        <button class="btn btn-ghost btn-block" id="btnDeleteActivity" style="display:none;margin-top:8px;color:var(--err);">Hapus Aktivitas</button>
       </div>
     </div>
   </div>
@@ -340,7 +351,7 @@ $('overlayAdd').onclick = ()=>closeSheet('sheetAdd');
 $('btnCloseSettings').onclick = ()=>closeSheet('sheetSettings');
 $('overlaySettings').onclick = ()=>closeSheet('sheetSettings');
 $('btnSettings').onclick = ()=>{ renderSettingsForm(); openSheet('sheetSettings'); };
-$('btnAdd').onclick = ()=>{ resetAddForm(); openSheet('sheetAdd'); };
+$('btnAdd').onclick = ()=>{ openAddActivity(); };
 
 /* ============================================================
    SETTINGS FORM
@@ -357,9 +368,15 @@ function renderSettingsForm(){
     list.appendChild(row);
   });
 }
+function extractSheetId(raw){
+  raw = (raw||'').trim();
+  const m = raw.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if(m) return m[1];
+  return raw.replace(/[?#].*$/,'').trim();
+}
 $('btnSaveSettings').onclick = ()=>{
   const cid = $('sClientId').value.trim();
-  const sid = $('sSheetId').value.trim();
+  const sid = extractSheetId($('sSheetId').value);
   if(!cid || !sid){
     $('settingsHelper').textContent = 'Client ID dan Spreadsheet ID wajib diisi.';
     $('settingsHelper').className = 'helper err';
@@ -470,7 +487,13 @@ async function gapiFetch(url, options){
   }
   if(!res.ok){
     const text = await res.text();
-    const err = new Error('API error ' + res.status + ': ' + text); err.status = res.status; throw err;
+    let msg = text;
+    try{
+      const j = JSON.parse(text);
+      if(j && j.error && j.error.message) msg = j.error.message;
+    }catch(e){}
+    if(res.status === 404) msg = 'Spreadsheet tidak ditemukan (404). Cek Spreadsheet ID di Pengaturan — pastikan hanya ID-nya saja, bukan link lengkap, dan akun Google yang login sudah punya akses edit ke sheet itu. Detail: ' + msg;
+    const err = new Error(msg); err.status = res.status; err.raw = text; throw err;
   }
   const ct = res.headers.get('content-type') || '';
   if(ct.includes('application/json')) return res.json();
@@ -515,6 +538,42 @@ async function appendRow(monthName, row){
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ values: [row] })
   });
+}
+
+async function getSheetsMeta(){
+  const data = await gapiFetch(`${sheetsBase()}?fields=sheets.properties`);
+  return (data.sheets||[]).map(s=>s.properties);
+}
+
+async function updateRow(monthName, rowNumber, row){
+  await gapiFetch(`${sheetsBase()}/values/${encodeURIComponent(monthName)}!A${rowNumber}:E${rowNumber}?valueInputOption=USER_ENTERED`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ values: [row] })
+  });
+}
+
+async function renumberSheet(monthName){
+  const rows = await getMonthRows(monthName);
+  if(!rows.length) return;
+  const values = rows.map((_,i)=>[i+1]);
+  await gapiFetch(`${sheetsBase()}/values/${encodeURIComponent(monthName)}!A2:A${rows.length+1}?valueInputOption=USER_ENTERED`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ values })
+  });
+}
+
+async function deleteRowFromSheet(monthName, rowNumber){
+  const metas = await getSheetsMeta();
+  const meta = metas.find(m=>m.title===monthName);
+  if(!meta) return;
+  await gapiFetch(`${sheetsBase()}:batchUpdate`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ requests: [{ deleteDimension: { range: { sheetId: meta.sheetId, dimension:'ROWS', startIndex: rowNumber-1, endIndex: rowNumber } } }] })
+  });
+  await renumberSheet(monthName);
 }
 
 /* ---- Drive ---- */
@@ -579,20 +638,62 @@ function populateKategoriSelect(){
   });
 }
 
+let editingContext = null; // { monthName, rowNumber, no, lampiran }
+let photoRemoved = false;
+
 function resetAddForm(){
   populateKategoriSelect();
   const today = new Date();
   $('fTanggal').value = today.toISOString().slice(0,10);
   $('fKeterangan').value = '';
   uploadedPhotoBlob = null;
+  photoRemoved = false;
+  editingContext = null;
   $('submitHelper').textContent = '';
   $('submitHelper').className = 'helper';
+  $('sheetAddTitle').textContent = 'Aktivitas Baru';
+  $('btnSubmitActivity').textContent = 'Simpan Aktivitas';
+  $('btnDeleteActivity').style.display = 'none';
   resetPhotoSlot();
 }
 
-function resetPhotoSlot(){
+function openAddActivity(){
+  resetAddForm();
+  openSheet('sheetAdd');
+}
+
+function openEditActivity(monthName, rowNumber, r){
+  populateKategoriSelect();
+  const [no, tanggal, kategori, keterangan, lampiran] = r;
+  editingContext = { monthName, rowNumber, no: no||'', lampiran: lampiran||'' };
+  photoRemoved = false;
+  uploadedPhotoBlob = null;
+  $('fTanggal').value = parseTanggalShort(tanggal, monthName);
+  $('fKategori').value = kategori;
+  $('fKeterangan').value = keterangan || '';
+  $('submitHelper').textContent = '';
+  $('submitHelper').className = 'helper';
+  $('sheetAddTitle').textContent = 'Edit Aktivitas';
+  $('btnSubmitActivity').textContent = 'Simpan Perubahan';
+  $('btnDeleteActivity').style.display = 'block';
+  resetPhotoSlot(lampiran);
+  openSheet('sheetAdd');
+}
+
+function resetPhotoSlot(existingLampiranLink){
   const slot = $('photoSlot');
-  slot.innerHTML = `<input type="file" accept="image/*" id="fFotoCamera" style="display:none;">
+  if(existingLampiranLink){
+    slot.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;text-align:center;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span style="font-size:10.5px;">Foto tersimpan<br>(tap untuk ganti)</span>
+      </div>
+      <input type="file" accept="image/*" capture="environment" id="fFotoCamera" style="display:none;">
+      <div class="rm" id="btnRemovePhoto">✕</div>`;
+    bindPhotoInput();
+    $('btnRemovePhoto').onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); uploadedPhotoBlob=null; photoRemoved=true; resetPhotoSlot(); };
+    return;
+  }
+  slot.innerHTML = `<input type="file" accept="image/*" capture="environment" id="fFotoCamera" style="display:none;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
     <span>Ambil / Pilih Foto</span>`;
   bindPhotoInput();
@@ -604,12 +705,13 @@ function bindPhotoInput(){
     const file = e.target.files[0];
     if(!file) return;
     uploadedPhotoBlob = file;
+    photoRemoved = false;
     const url = URL.createObjectURL(file);
     const slot = $('photoSlot');
     slot.innerHTML = `<img src="${url}"><input type="file" accept="image/*" style="display:none;" id="fFotoCamera">
       <div class="rm" id="btnRemovePhoto">✕</div>`;
     bindPhotoInput();
-    $('btnRemovePhoto').onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); uploadedPhotoBlob=null; resetPhotoSlot(); };
+    $('btnRemovePhoto').onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); uploadedPhotoBlob=null; photoRemoved=true; resetPhotoSlot(); };
   };
 }
 bindPhotoInput();
@@ -618,11 +720,24 @@ function formatTanggalShort(dateStr){
   const d = new Date(dateStr + 'T00:00:00');
   const dd = String(d.getDate()).padStart(2,'0');
   const mmm = MONTHS_EN3[d.getMonth()];
-  return `${dd}-${mmm}`;
+  return `${dd}-${mmm}-${d.getFullYear()}`;
 }
 function monthNameID(dateStr){
   const d = new Date(dateStr + 'T00:00:00');
   return MONTHS_ID[d.getMonth()];
+}
+// Parses "dd-MMM-yyyy" (new format) or legacy "dd-MMM" (no year, assumes current year)
+// back into an ISO yyyy-mm-dd string for the date input.
+function parseTanggalShort(str, fallbackMonthName){
+  if(!str) return new Date().toISOString().slice(0,10);
+  const parts = str.split('-');
+  const dd = parseInt(parts[0],10);
+  const monIdx = MONTHS_EN3.indexOf(parts[1]);
+  let yyyy = parts[2] ? parseInt(parts[2],10) : new Date().getFullYear();
+  if(isNaN(dd) || monIdx < 0) return new Date().toISOString().slice(0,10);
+  const mm = String(monIdx+1).padStart(2,'0');
+  const ddStr = String(dd).padStart(2,'0');
+  return `${yyyy}-${mm}-${ddStr}`;
 }
 
 $('btnSubmitActivity').onclick = async ()=>{
@@ -643,25 +758,59 @@ $('btnSubmitActivity').onclick = async ()=>{
 
   try{
     const monthName = monthNameID(tanggal);
-    await ensureMonthSheet(monthName);
 
-    let lampiranVal = '';
-    if(uploadedPhotoBlob){
-      btn.innerHTML = '<span class="spinner"></span> Mengunggah foto...';
-      const fname = `${tanggal}_${Date.now()}.jpg`;
-      const link = await uploadPhotoToDrive(uploadedPhotoBlob, fname);
-      lampiranVal = link;
+    if(editingContext){
+      // ---- EDIT MODE ----
+      let lampiranVal = editingContext.lampiran || '';
+      if(uploadedPhotoBlob){
+        btn.innerHTML = '<span class="spinner"></span> Mengunggah foto...';
+        const fname = `${tanggal}_${Date.now()}.jpg`;
+        lampiranVal = await uploadPhotoToDrive(uploadedPhotoBlob, fname);
+      } else if(photoRemoved){
+        lampiranVal = '';
+      }
+
+      btn.innerHTML = '<span class="spinner"></span> Menyimpan baris...';
+      if(monthName !== editingContext.monthName){
+        // date moved to a different month: create in target sheet, delete from original
+        await ensureMonthSheet(monthName);
+        const targetRows = await getMonthRows(monthName);
+        const nextNo = targetRows.length + 1;
+        const row = [nextNo, formatTanggalShort(tanggal), kategori, keterangan, lampiranVal];
+        await appendRow(monthName, row);
+        await deleteRowFromSheet(editingContext.monthName, editingContext.rowNumber);
+      } else {
+        const row = [editingContext.no, formatTanggalShort(tanggal), kategori, keterangan, lampiranVal];
+        await updateRow(monthName, editingContext.rowNumber, row);
+      }
+
+      showToast('Perubahan tersimpan', 'ok');
+      closeSheet('sheetAdd');
+      await populateMonthSelect();
+      await loadMonth(monthName);
+    } else {
+      // ---- ADD MODE ----
+      await ensureMonthSheet(monthName);
+
+      let lampiranVal = '';
+      if(uploadedPhotoBlob){
+        btn.innerHTML = '<span class="spinner"></span> Mengunggah foto...';
+        const fname = `${tanggal}_${Date.now()}.jpg`;
+        const link = await uploadPhotoToDrive(uploadedPhotoBlob, fname);
+        lampiranVal = link;
+      }
+
+      btn.innerHTML = '<span class="spinner"></span> Menyimpan baris...';
+      const existingRows = await getMonthRows(monthName);
+      const nextNo = existingRows.length + 1;
+      const row = [nextNo, formatTanggalShort(tanggal), kategori, keterangan, lampiranVal];
+      await appendRow(monthName, row);
+
+      showToast('Aktivitas tersimpan ke sheet ' + monthName, 'ok');
+      closeSheet('sheetAdd');
+      await populateMonthSelect();
+      await loadMonth(monthName);
     }
-
-    btn.innerHTML = '<span class="spinner"></span> Menyimpan baris...';
-    const existingRows = await getMonthRows(monthName);
-    const nextNo = existingRows.length + 1;
-    const row = [nextNo, formatTanggalShort(tanggal), kategori, keterangan, lampiranVal];
-    await appendRow(monthName, row);
-
-    showToast('Aktivitas tersimpan ke sheet ' + monthName, 'ok');
-    closeSheet('sheetAdd');
-    await loadCurrentMonth();
   }catch(e){
     console.error(e);
     if(e && e.status === 401){
@@ -677,16 +826,69 @@ $('btnSubmitActivity').onclick = async ()=>{
   }
 };
 
+$('btnDeleteActivity').onclick = async ()=>{
+  if(!editingContext) return;
+  if(!confirm('Hapus aktivitas ini? Tindakan ini tidak bisa dibatalkan.')) return;
+  const btn = $('btnDeleteActivity');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Menghapus...';
+  try{
+    await deleteRowFromSheet(editingContext.monthName, editingContext.rowNumber);
+    showToast('Aktivitas dihapus', 'ok');
+    closeSheet('sheetAdd');
+    await populateMonthSelect();
+    await loadMonth(editingContext.monthName);
+  }catch(e){
+    console.error(e);
+    if(e && e.status === 401){ requestToken(true); }
+    else showToast('Gagal menghapus: ' + (e.message||e), 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+};
+
 /* ============================================================
    LOAD & RENDER ACTIVITY LIST
    ============================================================ */
 function svgClip(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>'; }
 
+let selectedMonth = null;
+
+async function populateMonthSelect(){
+  const today = new Date();
+  const currentMonth = MONTHS_ID[today.getMonth()];
+  let titles = [];
+  try{ titles = await getSheetTitles(); }catch(e){ titles = []; }
+  const known = MONTHS_ID.filter(m => titles.includes(m));
+  if(!known.includes(currentMonth)) known.push(currentMonth);
+  // order: current month first, then the rest in calendar order
+  known.sort((a,b)=> MONTHS_ID.indexOf(a) - MONTHS_ID.indexOf(b));
+  const sel = $('monthSelect');
+  const prevValue = selectedMonth;
+  sel.innerHTML = '';
+  known.forEach(m=>{
+    const opt = document.createElement('option');
+    opt.value = m; opt.textContent = m + (m===currentMonth ? ' (bulan ini)' : '');
+    sel.appendChild(opt);
+  });
+  sel.value = (prevValue && known.includes(prevValue)) ? prevValue : currentMonth;
+}
+$('monthSelect').onchange = ()=>{ loadMonth($('monthSelect').value); };
+
 async function loadCurrentMonth(){
   const today = new Date();
   const monthName = MONTHS_ID[today.getMonth()];
+  await populateMonthSelect();
+  $('monthSelect').value = monthName;
+  await loadMonth(monthName);
+}
+
+async function loadMonth(monthName){
+  selectedMonth = monthName;
+  if($('monthSelect').value !== monthName) $('monthSelect').value = monthName;
   $('statMonthLbl').textContent = monthName;
-  $('listMonthLabel').textContent = 'Aktivitas — ' + monthName;
 
   let rows = [];
   try{
@@ -706,12 +908,15 @@ async function loadCurrentMonth(){
   if(!rows.length){
     list.innerHTML = `<div class="empty">
       ${svgClip()}
-      <p>Belum ada aktivitas bulan ini.<br>Tap tombol + untuk mulai mencatat.</p>
+      <p>Belum ada aktivitas di bulan ${monthName}.<br>Tap tombol + untuk mulai mencatat.</p>
     </div>`;
     return;
   }
 
-  rows.slice().reverse().slice(0,30).forEach(r=>{
+  // keep the real sheet row number (header is row 1, data starts row 2)
+  const withRowNum = rows.map((r, i)=>({ r, rowNumber: i+2 }));
+
+  withRowNum.slice().reverse().slice(0,60).forEach(({r, rowNumber})=>{
     const [no, tanggal, kategori, keterangan, lampiran] = r;
     const kIdx = parseInt(kategori,10) - 1;
     const kLabel = (kIdx >= 0 && kIdx < kpi.length) ? kpi[kIdx] : ('Kategori ' + kategori);
@@ -728,12 +933,15 @@ async function loadCurrentMonth(){
         ${ lampiran ? `<a class="lampiran" href="${lampiran}" target="_blank" rel="noopener">${svgClip()} Lihat lampiran</a>` : '' }
       </div>
     `;
+    const lampiranLink = div.querySelector('.lampiran');
+    if(lampiranLink){ lampiranLink.onclick = (ev)=> ev.stopPropagation(); }
+    div.onclick = ()=> openEditActivity(monthName, rowNumber, r);
     list.appendChild(div);
   });
 }
 $('refreshBtn').onclick = async ()=>{
   showToast('Memuat ulang...', 'ok');
-  try{ await loadCurrentMonth(); }
+  try{ await populateMonthSelect(); await loadMonth(selectedMonth || $('monthSelect').value); }
   catch(e){ if(e.status===401) requestToken(true); }
 };
 
