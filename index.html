@@ -181,6 +181,18 @@
   .kpi-row input{flex:1;background:var(--navy-2);border:1px solid var(--navy-3);border-radius:8px;padding:9px 10px;color:var(--paper);font-size:13px;}
   .signout{color:var(--err);font-size:13px;text-align:center;padding:14px;cursor:pointer;}
   hr.div{border:none;border-top:1px solid var(--navy-3);margin:18px 0;}
+
+  /* ---------- kpi progress chart ---------- */
+  .kpi-bar-row{margin-bottom:14px;}
+  .kpi-bar-row:last-child{margin-bottom:2px;}
+  .kpi-bar-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px;}
+  .kpi-bar-head .name{font-size:12.5px;color:var(--paper);line-height:1.3;flex:1;}
+  .kpi-bar-head .pct{font-family:var(--mono);font-size:12.5px;color:var(--amber);white-space:nowrap;}
+  .kpi-bar-track{height:8px;border-radius:6px;background:var(--navy-3);overflow:hidden;position:relative;}
+  .kpi-bar-fill{height:100%;border-radius:6px;background:var(--amber);transition:width .4s ease;}
+  .kpi-bar-fill.over{background:var(--ok);}
+  .kpi-bar-count{font-family:var(--mono);font-size:10.5px;color:var(--paper-dim);margin-top:4px;}
+  .kpi-empty{font-size:12.5px;color:var(--paper-dim);text-align:center;padding:10px 0;}
 </style>
 </head>
 <body>
@@ -220,6 +232,11 @@
       <div class="stat"><div class="num" id="statPhoto">0</div><div class="lbl">Ada lampiran</div></div>
     </div>
 
+    <div class="section-label"><span>Progress Target KPI</span><span id="chartMonthLabel" style="color:var(--paper-dim);text-transform:none;letter-spacing:0;"></span></div>
+    <div class="card" id="chartCard">
+      <div id="kpiChart"></div>
+    </div>
+
     <div class="section-label">
       <select class="month-select" id="monthSelect"></select>
       <span id="refreshBtn" style="cursor:pointer;color:var(--amber);">refresh</span>
@@ -253,7 +270,7 @@
         <label>FOTO LAMPIRAN (opsional)</label>
         <div class="photo-row">
           <label class="photo-slot" id="photoSlot">
-            <input type="file" accept="image/*" id="fFotoCamera" style="display:none;">
+            <input type="file" accept="image/*" capture="environment" id="fFotoCamera" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
             <span>Ambil / Pilih Foto</span>
           </label>
@@ -284,6 +301,17 @@
       <hr class="div">
       <div class="section-label" style="margin-top:0;">Label Kategori KPI</div>
       <div id="kpiList"></div>
+      <hr class="div">
+      <div class="section-label" style="margin-top:0;">
+        <span>Target KPI / Bulan</span>
+        <span id="btnSyncTargets" style="cursor:pointer;color:var(--amber);text-transform:none;letter-spacing:0;">sync dari sheet</span>
+      </div>
+      <div class="settings-field">
+        <label>NAMA SHEET REFERENSI TARGET</label>
+        <input type="text" id="sKpiSheetName" placeholder="Doni">
+      </div>
+      <div id="targetList"></div>
+      <div class="helper" id="targetHelper"></div>
       <button class="btn btn-ghost btn-block" id="btnSaveSettings" style="margin-top:14px;">Simpan Pengaturan</button>
       <div class="helper" id="settingsHelper"></div>
       <hr class="div">
@@ -302,6 +330,8 @@ const LS = {
   clientId: 'ra_client_id',
   sheetId: 'ra_sheet_id',
   kpi: 'ra_kpi_labels',
+  targets: 'ra_kpi_targets',
+  kpiSheetName: 'ra_kpi_sheet_name',
   token: 'ra_token',
   tokenExp: 'ra_token_exp',
 };
@@ -313,6 +343,7 @@ const DEFAULT_KPI = [
   'Meeting dengan vendor',
   'Training to personal sales',
 ];
+const DEFAULT_TARGETS = [1, 2, 8, 4, 4];
 
 const MONTHS_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 const MONTHS_EN3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -324,6 +355,15 @@ function getKpi(){
   catch(e){ return DEFAULT_KPI; }
 }
 function setKpi(arr){ localStorage.setItem(LS.kpi, JSON.stringify(arr)); }
+function getTargets(){
+  try {
+    const t = JSON.parse(localStorage.getItem(LS.targets));
+    return (t && t.length) ? t : DEFAULT_TARGETS;
+  } catch(e){ return DEFAULT_TARGETS; }
+}
+function setTargets(arr){ localStorage.setItem(LS.targets, JSON.stringify(arr)); }
+function getKpiSheetName(){ return localStorage.getItem(LS.kpiSheetName) || 'Doni'; }
+function setKpiSheetName(name){ localStorage.setItem(LS.kpiSheetName, name); }
 
 let accessToken = null;
 let tokenClient = null;
@@ -359,6 +399,7 @@ $('btnAdd').onclick = ()=>{ openAddActivity(); };
 function renderSettingsForm(){
   $('sClientId').value = getClientId();
   $('sSheetId').value = getSheetId();
+  $('sKpiSheetName').value = getKpiSheetName();
   const list = $('kpiList');
   list.innerHTML = '';
   getKpi().forEach((label, i)=>{
@@ -367,7 +408,51 @@ function renderSettingsForm(){
     row.innerHTML = `<span>${i+1}</span><input type="text" data-idx="${i}" value="${label.replace(/"/g,'&quot;')}">`;
     list.appendChild(row);
   });
+  renderTargetInputs();
 }
+function renderTargetInputs(){
+  const targets = getTargets();
+  const kpi = getKpi();
+  const tlist = $('targetList');
+  tlist.innerHTML = '';
+  kpi.forEach((label, i)=>{
+    const row = document.createElement('div');
+    row.className = 'kpi-row';
+    row.innerHTML = `<span>${i+1}</span><input type="number" min="0" step="1" data-target-idx="${i}" value="${targets[i] ?? ''}" style="max-width:70px;flex:none;">
+      <span style="flex:1;color:var(--paper-dim);font-size:11.5px;width:auto;font-family:var(--sans);">${label}</span>`;
+    tlist.appendChild(row);
+  });
+}
+$('btnSyncTargets').onclick = async ()=>{
+  const sheetName = $('sKpiSheetName').value.trim() || 'Doni';
+  const helper = $('targetHelper');
+  if(!accessToken){
+    helper.textContent = 'Login dulu dengan Google sebelum sync target.';
+    helper.className = 'helper err';
+    return;
+  }
+  helper.textContent = 'Mengambil data target...';
+  helper.className = 'helper';
+  try{
+    const fetched = await fetchKpiTargetsFromSheet(sheetName);
+    if(!fetched.length){
+      helper.textContent = `Tidak menemukan baris target di sheet "${sheetName}". Cek nama sheet-nya.`;
+      helper.className = 'helper err';
+      return;
+    }
+    const kpi = getKpi();
+    const merged = kpi.map((_,i)=> fetched[i] !== undefined ? fetched[i] : (getTargets()[i] ?? 0));
+    setTargets(merged);
+    renderTargetInputs();
+    helper.textContent = `Target berhasil disinkronkan dari sheet "${sheetName}".`;
+    helper.className = 'helper';
+  }catch(e){
+    console.error(e);
+    if(e && e.status === 401){ requestToken(true); helper.textContent = 'Sesi berakhir, coba lagi setelah login.'; helper.className='helper err'; return; }
+    helper.textContent = 'Gagal sync: ' + (e.message||e);
+    helper.className = 'helper err';
+  }
+};
 function extractSheetId(raw){
   raw = (raw||'').trim();
   const m = raw.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -384,13 +469,18 @@ $('btnSaveSettings').onclick = ()=>{
   }
   localStorage.setItem(LS.clientId, cid);
   localStorage.setItem(LS.sheetId, sid);
+  setKpiSheetName($('sKpiSheetName').value.trim() || 'Doni');
   const kpiInputs = document.querySelectorAll('#kpiList input');
   const kpiArr = Array.from(kpiInputs).map(i=>i.value.trim()).filter(Boolean);
   if(kpiArr.length) setKpi(kpiArr);
+  const targetInputs = document.querySelectorAll('#targetList input[data-target-idx]');
+  const targetArr = Array.from(targetInputs).map(i=> parseFloat(i.value) || 0);
+  if(targetArr.length) setTargets(targetArr);
   $('settingsHelper').textContent = 'Tersimpan.';
   $('settingsHelper').className = 'helper';
   closeSheet('sheetSettings');
   initAuth();
+  if(selectedMonth) loadMonth(selectedMonth);
 };
 $('btnSignOut').onclick = ()=>{
   localStorage.removeItem(LS.token);
@@ -545,6 +635,22 @@ async function getSheetsMeta(){
   return (data.sheets||[]).map(s=>s.properties);
 }
 
+async function fetchKpiTargetsFromSheet(sheetName){
+  // Scans column A (NO) and H (Target) for rows where A is 1..N — robust to the row
+  // not being at a fixed position, since header/notes rows vary in length above it.
+  const data = await gapiFetch(`${sheetsBase()}/values/${encodeURIComponent(sheetName)}!A1:H40`);
+  const rows = data.values || [];
+  const targets = [];
+  rows.forEach(row=>{
+    const no = parseInt(row[0], 10);
+    if(!isNaN(no) && no >= 1 && no <= 20 && row[7] !== undefined && row[7] !== ''){
+      const val = parseFloat(String(row[7]).replace(',','.'));
+      if(!isNaN(val)) targets[no-1] = val;
+    }
+  });
+  return targets;
+}
+
 async function updateRow(monthName, rowNumber, row){
   await gapiFetch(`${sheetsBase()}/values/${encodeURIComponent(monthName)}!A${rowNumber}:E${rowNumber}?valueInputOption=USER_ENTERED`, {
     method:'PUT',
@@ -687,13 +793,13 @@ function resetPhotoSlot(existingLampiranLink){
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <span style="font-size:10.5px;">Foto tersimpan<br>(tap untuk ganti)</span>
       </div>
-      <input type="file" accept="image/*" id="fFotoCamera" style="display:none;">
+      <input type="file" accept="image/*" capture="environment" id="fFotoCamera" style="display:none;">
       <div class="rm" id="btnRemovePhoto">✕</div>`;
     bindPhotoInput();
     $('btnRemovePhoto').onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); uploadedPhotoBlob=null; photoRemoved=true; resetPhotoSlot(); };
     return;
   }
-  slot.innerHTML = `<input type="file" accept="image/*" id="fFotoCamera" style="display:none;">
+  slot.innerHTML = `<input type="file" accept="image/*" capture="environment" id="fFotoCamera" style="display:none;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
     <span>Ambil / Pilih Foto</span>`;
   bindPhotoInput();
@@ -763,9 +869,11 @@ $('btnSubmitActivity').onclick = async ()=>{
       // ---- EDIT MODE ----
       let lampiranVal = editingContext.lampiran || '';
       if(uploadedPhotoBlob){
+        btn.innerHTML = '<span class="spinner"></span> Mengompres foto...';
+        const compressed = await compressImage(uploadedPhotoBlob, 1280, 0.65);
         btn.innerHTML = '<span class="spinner"></span> Mengunggah foto...';
         const fname = `${tanggal}_${Date.now()}.jpg`;
-        lampiranVal = await uploadPhotoToDrive(uploadedPhotoBlob, fname);
+        lampiranVal = await uploadPhotoToDrive(compressed, fname);
       } else if(photoRemoved){
         lampiranVal = '';
       }
@@ -794,9 +902,11 @@ $('btnSubmitActivity').onclick = async ()=>{
 
       let lampiranVal = '';
       if(uploadedPhotoBlob){
+        btn.innerHTML = '<span class="spinner"></span> Mengompres foto...';
+        const compressed = await compressImage(uploadedPhotoBlob, 1280, 0.65);
         btn.innerHTML = '<span class="spinner"></span> Mengunggah foto...';
         const fname = `${tanggal}_${Date.now()}.jpg`;
-        const link = await uploadPhotoToDrive(uploadedPhotoBlob, fname);
+        const link = await uploadPhotoToDrive(compressed, fname);
         lampiranVal = link;
       }
 
@@ -850,8 +960,77 @@ $('btnDeleteActivity').onclick = async ()=>{
 };
 
 /* ============================================================
-   LOAD & RENDER ACTIVITY LIST
+   KPI PROGRESS CHART
    ============================================================ */
+function renderKpiChart(rows){
+  const kpi = getKpi();
+  const targets = getTargets();
+  const counts = {};
+  rows.forEach(r=>{
+    const k = parseInt(r[2], 10);
+    if(!isNaN(k)) counts[k] = (counts[k]||0) + 1;
+  });
+
+  const container = $('kpiChart');
+  if(!kpi.length){
+    container.innerHTML = '<div class="kpi-empty">Belum ada kategori KPI diatur.</div>';
+    return;
+  }
+  container.innerHTML = kpi.map((label, i)=>{
+    const catNo = i+1;
+    const target = targets[i] || 0;
+    const achieved = counts[catNo] || 0;
+    const pct = target > 0 ? Math.round((achieved/target)*100) : 0;
+    const widthPct = Math.min(pct, 100);
+    const overClass = pct >= 100 ? 'over' : '';
+    return `
+      <div class="kpi-bar-row">
+        <div class="kpi-bar-head">
+          <span class="name">${catNo}. ${label.replace(/</g,'&lt;')}</span>
+          <span class="pct">${pct}%</span>
+        </div>
+        <div class="kpi-bar-track"><div class="kpi-bar-fill ${overClass}" style="width:${widthPct}%"></div></div>
+        <div class="kpi-bar-count">${achieved} / ${target || '—'} aktivitas bulan ini</div>
+      </div>
+    `;
+  }).join('');
+}
+
+/* ============================================================
+   IMAGE COMPRESSION (before upload to Drive)
+   ============================================================ */
+function compressImage(file, maxDim, quality){
+  maxDim = maxDim || 1280;
+  quality = quality || 0.65;
+  return new Promise((resolve)=>{
+    if(!file.type.startsWith('image/')){ resolve(file); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        if(w >= h){ h = Math.round(h * (maxDim/w)); w = maxDim; }
+        else { w = Math.round(w * (maxDim/h)); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob((blob)=>{
+        URL.revokeObjectURL(url);
+        if(!blob || blob.size >= file.size){ resolve(file); return; }
+        resolve(blob);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+function formatKB(bytes){
+  if(bytes > 1024*1024) return (bytes/1024/1024).toFixed(1) + ' MB';
+  return Math.round(bytes/1024) + ' KB';
+}
+
 function svgClip(){ return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>'; }
 
 let selectedMonth = null;
@@ -900,6 +1079,8 @@ async function loadMonth(monthName){
 
   $('statMonth').textContent = rows.length;
   $('statPhoto').textContent = rows.filter(r=>r[4] && r[4].trim()).length;
+  $('chartMonthLabel').textContent = monthName;
+  renderKpiChart(rows);
 
   const kpi = getKpi();
   const list = $('activityList');
@@ -916,15 +1097,7 @@ async function loadMonth(monthName){
   // keep the real sheet row number (header is row 1, data starts row 2)
   const withRowNum = rows.map((r, i)=>({ r, rowNumber: i+2 }));
 
-  // sort by actual date value (oldest first, newest last)
-  const sorted = withRowNum.slice().sort((a,b)=>{
-    const da = parseTanggalShort(a.r[1], monthName);
-    const db = parseTanggalShort(b.r[1], monthName);
-    if(da !== db) return da.localeCompare(db);
-    return a.rowNumber - b.rowNumber; // tie-break: entered earlier first
-  });
-
-  sorted.slice(-60).forEach(({r, rowNumber})=>{
+  withRowNum.slice().reverse().slice(0,60).forEach(({r, rowNumber})=>{
     const [no, tanggal, kategori, keterangan, lampiran] = r;
     const kIdx = parseInt(kategori,10) - 1;
     const kLabel = (kIdx >= 0 && kIdx < kpi.length) ? kpi[kIdx] : ('Kategori ' + kategori);
